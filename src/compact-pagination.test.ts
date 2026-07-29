@@ -664,4 +664,133 @@ SELECT * WHERE{
       expect(countPayload).toEqual(expectedCountPayload);
     });
   });
+
+  // NOTE: What are we testing?
+  // - GROUP BY
+  // - ORDER BY
+  // - paginated querying (where query result is smaller than the dataset)
+  // - working with calculated values (?TotalAmount)
+  // - ensuring that globalLimit is applied to the final result (not the result set that is matched
+  //   by `queryToWrap`)
+  describe("Grouping, ordering and pagination", () => {
+    const ttl = `@base <http://example.com/vocabulary/> .
+    @prefix : <http://example.com/vocabulary/> .
+
+    <tx0>
+    :TransactionRegion "Europe";
+    :Amount 1000 .
+
+    <tx1>
+    :TransactionRegion "Africa";
+    :Amount 200 .
+
+    <tx2>
+    :TransactionRegion "Asia";
+    :Amount 300 .
+
+    <tx3>
+    :TransactionRegion "North America";
+    :Amount 400 .
+
+    <tx4>
+    :TransactionRegion "Africa";
+    :Amount 500 .
+
+    <tx5>
+    :TransactionRegion "Africa";
+    :Amount 700 .
+
+    <tx6>
+    :TransactionRegion "North America";
+    :Amount 200 .
+
+    <tx7>
+    :TransactionRegion "Asia";
+    :Amount 100 .
+`
+
+    const queryToWrap = `PREFIX : <http://example.com/vocabulary/>
+    SELECT ?TransactionRegion (SUM(?Amount) AS ?TotalAmount) WHERE{
+      ?this :TransactionRegion ?TransactionRegion .
+      ?this :Amount ?Amount .
+    } GROUP BY ?TransactionRegion ORDER BY DESC(?TotalAmount)`;
+    const store = ttlStringToStore(ttl);
+    const idCols = ["TransactionRegion"];
+    const restCols = ["TotalAmount"];
+
+    const expectedCountPayload = { groupedCount: 4, globalCount: 4 };
+
+    test("sanity check", () => {
+      expect(queryToWrap).toBeValidSparqlQuery();
+    });
+
+    test("row retrieval", () => {
+      const newQuery = formatPaginatedQuery({
+        globalLimit: 2,
+        groupLimit: 2,
+        groupOffset: 0,
+        idVars: idCols,
+        propNameVar,
+        propValVar,
+        queryToWrap,
+      });
+
+      const resultingTable = queryStore(store, newQuery);
+
+      // NOTE: This query doesn't fetch all items, expectedCountPayload is different
+      expectTableCountToMatchCountPayload({
+        expectedCountPayload: { groupedCount: 2, globalCount: 2 },
+        resultingTable,
+      });
+
+      const actualRows = tableToMulticardinalRow({ resultingTable, propNameVar, propValVar });
+
+      const expectedRows: MulticardinalRow[] = [
+        {
+          idCols,
+          idValues: { TransactionRegion: "Africa" },
+          restCols,
+          restValues: { TotalAmount: ["1400"] },
+        },
+        {
+          idCols,
+          idValues: { TransactionRegion: "Europe" },
+          restCols,
+          restValues: { TotalAmount: ["1000"] },
+        },
+      ];
+
+      expectEquivalentRows({
+        actualRows,
+        expectedRows,
+        idCols,
+      });
+    });
+
+    test("counting", () => {
+      const globalRowCountVar = "__global_count";
+      const groupedRowCountVar = "__grouped_count";
+
+      const counterQuery = formatPaginatedCounterQuery({
+        queryToWrap,
+        globalLimit: 10_000,
+        globalRowCountVar,
+        groupedRowCountVar,
+        idVars: idCols,
+        propNameVar,
+        propValVar,
+      });
+
+      expect(counterQuery).toBeValidSparqlQuery();
+
+      const resultingTable = queryStore(store, counterQuery);
+      const countPayload = tableToCountPayload({
+        resultingTable,
+        globalRowCountVar,
+        groupedRowCountVar,
+      });
+
+      expect(countPayload).toEqual(expectedCountPayload);
+    });
+  });
 });
