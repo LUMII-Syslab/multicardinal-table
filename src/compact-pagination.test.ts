@@ -5,7 +5,6 @@ import {
   tableToMulticardinalRow,
   tableToCountPayload,
 } from "./compact-pagination";
-import { isQueryValid } from "./query-util";
 import { queryStore, ttlStringToStore } from "./test-util";
 import type { SparqlTableResult } from "./sparql_queries";
 import type { MulticardinalRow } from "./multi-cardinal-table-util";
@@ -23,10 +22,6 @@ function expectPrefixesToNotBeNested(query: string) {
 
     expect(lines.slice(0, maxPrefixIndex + 1))
         .toSatisfyAll((line) => lineIsPrefixStmt(line) || lineIsBlank(line));
-}
-
-function expectValidQuery(query: string) {
-  expect(isQueryValid(query)).toBeTrue();
 }
 
 function makeMulticardinalRowSorter(keys: string[]) {
@@ -181,7 +176,7 @@ SELECT DISTINCT * WHERE{
       propValVar,
     });
 
-    expectValidQuery(res);
+    expect(res).toBeValidSparqlQuery();
     expectPrefixesToNotBeNested(res);
   });
 });
@@ -231,7 +226,7 @@ SELECT DISTINCT * WHERE{
         OPTIONAL{?Catalog dct:title ?title .  }
         OPTIONAL{?Catalog dct:description ?description .  }
 } LIMIT 20`;
-    expectValidQuery(queryToWrap);
+    expect(queryToWrap).toBeValidSparqlQuery;
 
     const q = formatPaginatedCounterQuery({
       propNameVar,

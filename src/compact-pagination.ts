@@ -9,35 +9,40 @@ const lineAwareIndent = (src: string) => src.split("\n").map(indent).join("\n");
 const fmtVars = (vars: string[]) => vars.map((it) => `?${it}`).join(" ");
 const fmtSubquery = (subquery: string) => lineAwareIndent(["{", subquery, "}"].join("\n"));
 
-/**
- * Get lines of queries needed for proper propName and propVal usage.
- */
-function formatPropConstraints({
-  query,
-  idVars,
+function formatValueSelection({
+  queryToWrap: query,
   propNameVar,
   propValVar,
+  idVars,
 }: {
-  query: string,
-  idVars: string[],
+  queryToWrap: string,
   propNameVar: string,
   propValVar: string,
-}) {
+  idVars: string[],
+}): string {
+  const { main } = splitQueryPreamble(query);
   const valueVars: string[] = findVars({ query }).filter((it) => !idVars.includes(it));
 
-  // NOTE: N/A value shouldn't ever appear but we have to put some value
-  const makeIfExpr = ([thisVar, ...rest]: string[]): string => thisVar
-    ? `IF(?${propNameVar} = "${thisVar}", ?${thisVar}, ${makeIfExpr(rest)})`
-    : '"N/A"';
+  function formatUnionClause(valVarName: string) {
+    return fmtSubquery([
+      fmtSubquery(main),
+      `BIND("${valVarName}" AS ?${propNameVar})`,
+      `BIND(?${valVarName} as ?${propValVar})`,
+    ].join("\n"));
+  }
 
-  return [
-    `VALUES ?${propNameVar} { ${valueVars.map((it) => `"${it}"`).join(" ")} }`,
-    `BIND(${makeIfExpr(valueVars)} AS ?${propValVar})`,
-    // NOTE: `valueVars` may contain vars that will never appear in results and we need to filter
-    // those rows out to reduce noise.
-    `FILTER ( BOUND(?${propValVar}) )`,
+  // NOTE: In this scenario SELECT DISTINCT may have negative performance impact.
+  // NOTE: It's possible to omit DISTINCT (or use REDUCED) and filter client-side.
+  const valueSelectionSubquery = [
+    `SELECT DISTINCT ${fmtVars([...idVars, propNameVar, propValVar])} {`,
+    valueVars.map((valueVar) => formatUnionClause(valueVar)).join(" UNION "),
+    `FILTER(BOUND(?${propValVar}))`,
+    "}",
   ].join("\n");
+
+  return valueSelectionSubquery;
 }
+
 
 export function formatPaginatedQuery({
   queryToWrap: query,
@@ -58,10 +63,10 @@ export function formatPaginatedQuery({
 }): string {
   const { preamble, main } = splitQueryPreamble(query);
 
-  const selectedVars = [...idVars, propNameVar, propValVar];
-
   // NOTE: Candidates are key column value sets that are retrieved during pagination.
   const varToCandidateVarName = (varName: string) => `__candidate_${varName}`;
+
+  const selectedVars = [...idVars, propNameVar, propValVar];
 
   // NOTE: Checking for equality is not enough -- BOUND() checks are required to allow unbound
   // variables to be used as keys.
@@ -85,15 +90,13 @@ OFFSET ${groupOffset}`;
     preamble,
     `SELECT DISTINCT ${fmtVars(selectedVars)} {`,
     fmtSubquery(keyConstraintSubquery),
-    fmtSubquery(main),
-    formatPropConstraints({ idVars, propNameVar, propValVar, query }),
+    fmtSubquery(formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap: query })),
     ...candidateFilters,
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
   return res;
 }
-
 
 export function formatPaginatedCounterQuery({
   queryToWrap,
@@ -112,36 +115,22 @@ export function formatPaginatedCounterQuery({
   globalRowCountVar: string,
   groupedRowCountVar: string,
 }) {
-  const { preamble, main } = splitQueryPreamble(queryToWrap);
+  const { preamble } = splitQueryPreamble(queryToWrap);
 
-  const selectedVars = [...idVars, propNameVar, propValVar];
-
-  // NOTE: Match global rows with limit
-  const limitedSubquery: string = [
-    `SELECT DISTINCT ${fmtVars(selectedVars)} WHERE {`,
-    fmtSubquery(main),
-    lineAwareIndent(
-      formatPropConstraints({ query: queryToWrap, idVars, propNameVar, propValVar })
-    ),
-    `} LIMIT ${globalLimit}`,
-  ].join("\n");
-
-  // NOTE: Only select idVars so that counting works via COUNT(*) and COUNT(DISTINCT *)
-  // NOTE: COUNT doesn't work with multiple vars which is why we need this selection
-  const idVarsSelection: string = [
-    `SELECT ${fmtVars(idVars)} WHERE {`,
-    lineAwareIndent(limitedSubquery),
-    `}`,
-  ].join("\n");
+  const justIdVars = [
+    `SELECT ${fmtVars(idVars)} {`,
+    fmtSubquery(formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap })),
+    "}",
+  ].join("")
 
   const query = [
     preamble,
     "SELECT",
-    `(COUNT(*) AS ?${globalRowCountVar})`,
-    `(COUNT(DISTINCT *) AS ?${groupedRowCountVar})`,
+     `(COUNT(*) AS ?${globalRowCountVar})`,
+     `(COUNT(DISTINCT *) AS ?${groupedRowCountVar})`,
     "WHERE {",
-    fmtSubquery(idVarsSelection),
-    "}",
+    justIdVars,
+    `} LIMIT ${globalLimit}`,
   ].join("\n");
 
   return query;
