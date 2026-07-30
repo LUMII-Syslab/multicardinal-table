@@ -46,7 +46,16 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['src/**/*.test.{ts,tsx}'],
+          include: ['src/**/*.test.{ts,tsx}', '!src/**/*.integration.test.{ts,tsx}'],
+          setupFiles: ['./testSetup.js'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          environment: 'node',
+          include: ['src/**/*.integration.test.{ts,tsx}'],
           setupFiles: ['./testSetup.js'],
         },
       },
