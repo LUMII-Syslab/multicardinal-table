@@ -10,6 +10,7 @@ import type { MulticardinalRow } from "./multi-cardinal-table-util";
 import type { SparqlTableResult } from "./sparql_queries";
 import { OxigraphQueryStoreProvider } from "./test-util/OxigraphQueryStore";
 import { QLeverQueryStoreProvider } from "./test-util/QLeverQueryStore";
+import { JenaQueryStoreProvider } from "./test-util/JenaQueryStore";
 
 function makeMulticardinalRowSorter(keys: string[]) {
   function singleCompare(a: MulticardinalRow, b: MulticardinalRow, key: string): number {
@@ -578,3 +579,4 @@ SELECT * WHERE{
 
 testIntegration({ name: "Oxigraph", queryStoreProvider: OxigraphQueryStoreProvider });
 testIntegration({ name: "QLever", queryStoreProvider: QLeverQueryStoreProvider });
+testIntegration({ name: "Jena", queryStoreProvider: JenaQueryStoreProvider });
