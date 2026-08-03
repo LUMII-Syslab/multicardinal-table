@@ -574,6 +574,123 @@ SELECT * WHERE{
         expect(countPayload).toEqual(expectedCountPayload);
       });
     });
+
+    describe("order is preserved with several order keys", async () => {
+      // NOTE: What are we testing
+      // - Multiple order keys work
+      // - Ordering works in both key and value level
+
+      // NOTE: Extra additions added to the tests
+      // - Mixed numbers and strings for variety
+      // - Added numbers with varying digit count that will mess the order if numbers are ordered by
+      //   string (e.g. 2 < 1000 vs "2" > "1000")
+      const ttl = `
+      @base <http://example.com/vocabulary/> .
+      @prefix : <http://example.com/vocabulary/> .
+
+      <bA> :priorityLevel "B"; :score 1000; :index -1 .
+      <a0> :priorityLevel "A"; :score 1000; :index 0 .
+      <b0> :priorityLevel "B"; :score 2   ; :index 1 .
+      <c0> :priorityLevel "C"; :score 100 ; :index 2 .
+      <b1> :priorityLevel "B"; :score 10  ; :index 3 .
+      <a1> :priorityLevel "A"; :score 300 ; :index 4 .
+      <c1> :priorityLevel "C"; :score 40  ; :index 5 .
+      <c2> :priorityLevel "C"; :score 1000; :index 6 .
+      <b2> :priorityLevel "B"; :score 1000; :index 7 .
+      <a2> :priorityLevel "A"; :score 2000; :index 8 .
+      <bZ> :priorityLevel "B"; :score 1000; :index 100 .
+      `;
+
+      const store = await queryStoreProvider.storeFromTtl({ ttl });
+
+      const prefixed = (it: string) => `http://example.com/vocabulary/${it}`;
+
+      const queryToWrap = `PREFIX : <http://example.com/vocabulary/>
+    SELECT * WHERE {
+      ?this :score ?score .
+      ?this :priorityLevel ?priorityLevel .
+      ?this :index ?index .
+    } ORDER BY DESC(?score) ?priorityLevel ?index`;
+
+      const idCols = ["score", "priorityLevel"];
+      const restCols = ["index", "this"];
+
+      test("sanity check", () => {
+        expect(queryToWrap).toBeValidSparqlQuery();
+      });
+
+      test("row retrieval", async () => {
+        const newQuery = formatPaginatedQuery({
+          globalLimit: 1_000,
+          groupLimit: 5,
+          groupOffset: 0,
+          idVars: idCols,
+          propNameVar,
+          propValVar,
+          queryToWrap,
+        });
+
+        expect(newQuery).toBeValidSparqlQuery();
+
+        const resultingTable = await store.executeQuery({ query: newQuery });
+
+        expectTableCountToMatchCountPayload({
+          expectedCountPayload: { groupedCount: 5, globalCount: 14 },
+          resultingTable,
+        });
+
+        const actualRows = tableToMulticardinalRow({ resultingTable, propNameVar, propValVar });
+
+        const row = (
+          score: string,
+          priorityLevel: string,
+          thisVal: string[],
+          index: string[],
+        ) => ({
+          idCols,
+          restCols,
+          idValues: { score, priorityLevel },
+          restValues: { this: thisVal, index },
+        }) satisfies MulticardinalRow;
+
+        const expectedRows: MulticardinalRow[] = [
+          row("2000", "A", [prefixed("a2")], ["8"]),
+          row("1000", "A", [prefixed("a0")], ["0"]),
+          row("1000", "B", ["bA", "b2", "bZ"].map(prefixed), ["-1", "7", "100"]),
+          row("1000", "C", [prefixed("c2")], ["6"]),
+          row("300", "A", [prefixed("a1")], ["4"]),
+        ];
+
+        expect(actualRows).toEqual(expectedRows);
+      });
+
+      test("counting", async () => {
+        const globalRowCountVar = "__global_count";
+        const groupedRowCountVar = "__grouped_count";
+
+        const counterQuery = formatPaginatedCounterQuery({
+          queryToWrap,
+          globalLimit: 10_000,
+          globalRowCountVar,
+          groupedRowCountVar,
+          idVars: idCols,
+          propNameVar,
+          propValVar,
+        });
+
+        expect(counterQuery).toBeValidSparqlQuery();
+
+        const resultingTable = await store.executeQuery({ query: counterQuery });
+        const countPayload = tableToCountPayload({
+          resultingTable,
+          globalRowCountVar,
+          groupedRowCountVar,
+        });
+
+        const expectedCountPayload = { groupedCount: 9, globalCount: 22 };
+        expect(countPayload).toEqual(expectedCountPayload);
+      });
+    });
   });
 }
 

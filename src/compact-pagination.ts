@@ -22,7 +22,7 @@ function formatValueSelection({
   propNameVar: string,
   propValVar: string,
   idVars: string[],
-}): string {
+}): string[] {
   const { main } = splitQueryPreamble(query);
   const valueVars: string[] = findVars({ query }).filter((it) => !idVars.includes(it));
 
@@ -34,16 +34,13 @@ function formatValueSelection({
     ].join("\n"));
   }
 
-  // NOTE: In this scenario SELECT DISTINCT may have negative performance impact.
-  // NOTE: It's possible to omit DISTINCT (or use REDUCED) and filter client-side.
-  const valueSelectionSubquery = [
-    `SELECT DISTINCT ${fmtVars([...idVars, propNameVar, propValVar])} {`,
+  // NOTE: Returning list to avoid subqueries.
+  // NOTE: Avoiding subqueries because subqueries are unordered and we have to duplicate ORDER BY
+  // if we wish to preserve order.
+  return [
     valueVars.map((valueVar) => formatUnionClause(valueVar)).join(" UNION "),
     `FILTER(BOUND(?${propValVar}))`,
-    "}",
-  ].join("\n");
-
-  return valueSelectionSubquery;
+  ];
 }
 
 
@@ -138,14 +135,17 @@ OFFSET ${groupOffset}`;
     return splitQueryPreamble(orderedWithPrefix).main;
   }
 
-  const res = [
+  const resWithoutOrder = [
     preamble,
     `SELECT DISTINCT ${fmtVars(selectedVars)} {`,
     fmtSubquery(getKeyConstraintSubquery()),
-    fmtSubquery(formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap: query })),
+    ...formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap: query }),
     ...candidateFilters,
     `} LIMIT ${globalLimit}`,
   ].join("\n");
+
+  // NOTE: Preserve the result order in display
+  const res = injectOrderBy({ queryToWrap: query, newQuery: resWithoutOrder });
 
   return res;
 }
@@ -169,9 +169,9 @@ export function formatPaginatedCounterQuery({
 }) {
   const { preamble } = splitQueryPreamble(queryToWrap);
 
-  const mainSubquery = fmtSubquery(formatValueSelection({
+  const valueConstraints = formatValueSelection({
     idVars, propNameVar, propValVar, queryToWrap,
-  }));
+  });
 
   // NOTE: Initially there used to be a more elegant solution -- first select rows and then only
   // keep the keys. COUNT(*) would correspond to global count and COUNT(DISTINCT *) would correspond
@@ -180,14 +180,16 @@ export function formatPaginatedCounterQuery({
   // NOTE: COUNT(DISTINCT *) issue can be seen in https://github.com/ad-freiburg/qlever/issues/3158
 
   const globalRows = [
-    `SELECT * WHERE {`,
-    mainSubquery,
+    // NOTE: `valueConstraints` is projecting old variables and thus we need to be explicit about
+    // the variables we are selecting for correct counting.
+    `SELECT DISTINCT ${fmtVars([...idVars, propNameVar, propValVar])} WHERE {`,
+    ...valueConstraints,
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
   const groupedRows = [
     `SELECT DISTINCT ${fmtVars(idVars)} WHERE {`,
-    mainSubquery,
+    ...valueConstraints,
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
