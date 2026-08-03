@@ -169,20 +169,46 @@ export function formatPaginatedCounterQuery({
 }) {
   const { preamble } = splitQueryPreamble(queryToWrap);
 
-  const justIdVars = [
-    `SELECT ${fmtVars(idVars)} {`,
-    fmtSubquery(formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap })),
+  const mainSubquery = fmtSubquery(formatValueSelection({
+    idVars, propNameVar, propValVar, queryToWrap,
+  }));
+
+  // NOTE: Initially there used to be a more elegant solution -- first select rows and then only
+  // keep the keys. COUNT(*) would correspond to global count and COUNT(DISTINCT *) would correspond
+  // to grouped count. Unfortunately QLever has a bug where COUNT(DISTINCT *) returns 1 when using
+  // subqueries. Thus a less elegant solution without `COUNT(DISTINCT *)` is used.
+  // NOTE: COUNT(DISTINCT *) issue can be seen in https://github.com/ad-freiburg/qlever/issues/3158
+
+  const globalRows = [
+    `SELECT * WHERE {`,
+    mainSubquery,
+    `} LIMIT ${globalLimit}`,
+  ].join("\n");
+
+  const groupedRows = [
+    `SELECT DISTINCT ${fmtVars(idVars)} WHERE {`,
+    mainSubquery,
+    `} LIMIT ${globalLimit}`,
+  ].join("\n");
+
+  const countGlobalRows = [
+    `SELECT (COUNT(*) AS ?${globalRowCountVar}) {`,
+    globalRows,
     "}",
-  ].join("")
+  ].join("\n");
+
+  const countGroupedRows = [
+    `SELECT (COUNT(*) AS ?${groupedRowCountVar}) {`,
+    groupedRows,
+    "}",
+  ].join("\n");
 
   const query = [
     preamble,
-    "SELECT",
-     `(COUNT(*) AS ?${globalRowCountVar})`,
-     `(COUNT(DISTINCT *) AS ?${groupedRowCountVar})`,
-    "WHERE {",
-    justIdVars,
-    `} LIMIT ${globalLimit}`,
+    "SELECT * WHERE {",
+    fmtSubquery(countGlobalRows),
+    fmtSubquery(countGroupedRows),
+    "}",
   ].join("\n");
 
   return query;
