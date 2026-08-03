@@ -2,6 +2,9 @@ import type { MulticardinalRow } from "./multi-cardinal-table-util";
 import { findVars, splitQueryPreamble } from "./query-util";
 import type { SparqlTableResult } from "./sparql_queries";
 import { Data, Option, MutableHashMap } from "effect";
+import { Parser } from '@traqula/parser-sparql-1-1';
+import { type SolutionModifierOrder } from '@traqula/rules-sparql-1-1';
+import { Generator } from '@traqula/generator-sparql-1-1';
 
 const indentation = "  ";
 const indent = (line: string) => `${indentation}${line}`;
@@ -44,6 +47,44 @@ function formatValueSelection({
 }
 
 
+function getOrderModifier(query: string): SolutionModifierOrder | undefined {
+  const parser = new Parser();
+  const ast = parser.parse(query);
+  if (!(ast.type === "query" && ast.subType === "select")) return undefined;
+  return ast.solutionModifiers.order;
+}
+
+function injectOrderBy({
+  queryToWrap,
+  newQuery,
+}: {
+  queryToWrap: string,
+  newQuery: string,
+}): string {
+  const orderModifier = getOrderModifier(queryToWrap);
+  // NOTE: Nothing to inject and thus we can return the query as is
+  if (!orderModifier) return newQuery;
+
+  const parser = new Parser();
+  const generator = new Generator();
+
+  const ast = parser.parse(newQuery);
+
+  if (!(ast.type === "query" && ast.subType === "select")) {
+    throw new Error("Expected SELECT query, got something else!")
+  }
+
+  const newAst: typeof ast = {
+    ...ast,
+    solutionModifiers: {
+      ...ast.solutionModifiers,
+      order: orderModifier,
+    },
+  };
+
+  return generator.generate(newAst);
+}
+
 export function formatPaginatedQuery({
   queryToWrap: query,
   idVars,
@@ -75,21 +116,32 @@ export function formatPaginatedQuery({
     return `FILTER( (?${k} = ?${newK}) || (!BOUND(?${k}) && !BOUND(?${newK})))`;
   });
 
-  const selection = idVars
-    .map((it) => `(?${it} AS ?${varToCandidateVarName(it)})`)
-    .join(" ");
+  function getKeyConstraintSubquery() {
+    const selection = idVars
+      .map((it) => `(?${it} AS ?${varToCandidateVarName(it)})`)
+      .join(" ");
 
-  const keyConstraintSubquery = `SELECT DISTINCT ${selection}
+    const initialConstraint = `SELECT DISTINCT ${selection}
 WHERE {
 ${lineAwareIndent(main)}
 }
 LIMIT ${groupLimit}
 OFFSET ${groupOffset}`;
 
+    const orderedWithPrefix = injectOrderBy({
+      queryToWrap: query,
+      // NOTE: We need to inject preamble so that parser can recognize prefixes
+      newQuery: preamble.concat(initialConstraint),
+    });
+
+    // NOTE: And then remove prefixes so that we can use this as subquery
+    return splitQueryPreamble(orderedWithPrefix).main;
+  }
+
   const res = [
     preamble,
     `SELECT DISTINCT ${fmtVars(selectedVars)} {`,
-    fmtSubquery(keyConstraintSubquery),
+    fmtSubquery(getKeyConstraintSubquery()),
     fmtSubquery(formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap: query })),
     ...candidateFilters,
     `} LIMIT ${globalLimit}`,
