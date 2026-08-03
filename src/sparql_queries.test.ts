@@ -4,21 +4,6 @@ import {
     formatUniversalPaginatorQueryCounter
 } from "./sparql_queries";
 
-function expectPrefixesToNotBeNested(query: string) {
-    const lines = query.split("\n");
-
-    const lineIsPrefixStmt = (line: string) => !!line.match(/\s*PREFIX/);
-    const lineIsBlank = (line: string) => !!line.match(/^\s*$/);
-
-    const maxPrefixIndex = ([...lines.entries()])
-        .filter(([_, l]) => lineIsPrefixStmt(l))
-        .map(([i]) => i)
-        .reduce((a, b) => Math.max(a, b));
-
-    expect(lines.slice(0, maxPrefixIndex + 1))
-        .toSatisfyAll((line) => lineIsPrefixStmt(line) || lineIsBlank(line));
-}
-
 describe("formatUniversalPaginationQuery", () => {
     test("basic query with one distinct variable", () => {
         const q = `
@@ -26,6 +11,8 @@ SELECT * WHERE {
   ?sub ?pred ?obj .
 }
 `;
+        expect(q).toBeValidSparqlQuery();
+
         const res = formatUniversalPaginatorQuery({
             queryToWrap: q,
             groupLimit: 50,
@@ -33,6 +20,9 @@ SELECT * WHERE {
             globalLimit: 1000,
             idVars: ["sub"],
         });
+
+        expect(res).toBeValidSparqlQuery();
+
         // NOTE: Should have a distinct query involving the ?sub column
         expect(res).toMatch(/SELECT\s+DISTINCT\s+\?sub/);
         // NOTE: Match passed parameters
@@ -47,6 +37,8 @@ SELECT * WHERE {
   ?sub ?pred ?obj .
 }
 `;
+        expect(q).toBeValidSparqlQuery();
+
         const res = formatUniversalPaginatorQuery({
             queryToWrap: q,
             groupLimit: 20,
@@ -54,6 +46,8 @@ SELECT * WHERE {
             globalLimit: 2000,
             idVars: ["sub", "pred"],
         });
+
+        expect(res).toBeValidSparqlQuery();
 
         // NOTE: Match "DISTINCT ?sub ?pred"
         expect(res).toMatch(/SELECT\s+DISTINCT\s+\?sub\s+\?pred/);
@@ -77,6 +71,8 @@ SELECT DISTINCT * WHERE{
         OPTIONAL{?Catalog dct:description ?description .  }
 } LIMIT 20`;
 
+        expect(q).toBeValidSparqlQuery();
+
         const res = formatUniversalPaginatorQuery({
             queryToWrap: q,
             groupLimit: 20,
@@ -85,7 +81,7 @@ SELECT DISTINCT * WHERE{
             idVars: ["Catalog"],
         });
 
-        expectPrefixesToNotBeNested(res);
+        expect(res).toBeValidSparqlQuery();
     });
 });
 
@@ -94,7 +90,9 @@ describe("formatUniversalPaginatorQueryCounter", () => {
         const globalRowCountVar = "__global_count";
         const groupedRowCountVar = "__grouped_count";
 
-        const queryToWrap = `SELECT * FROM { ?sub ?pred ?obj }`;
+        const queryToWrap = `SELECT * WHERE { ?sub ?pred ?obj }`;
+
+        expect(queryToWrap).toBeValidSparqlQuery();
 
         const q =formatUniversalPaginatorQueryCounter({
             globalRowCountVar,
@@ -102,6 +100,8 @@ describe("formatUniversalPaginatorQueryCounter", () => {
             idVars: ["sub", "pred"],
             queryToWrap,
         });
+
+        expect(q).toBeValidSparqlQuery();
 
         expect(q).toMatch(`?${globalRowCountVar}`);
         expect(q).toMatch(`?${groupedRowCountVar}`);
@@ -115,7 +115,9 @@ describe("formatUniversalPaginatorQueryCounter", () => {
         const globalLimit = 1000;
         const groupLimit = 20;
 
-        const queryToWrap = `SELECT * FROM { ?sub ?pred ?obj }`;
+        const queryToWrap = `SELECT * WHERE { ?sub ?pred ?obj }`;
+
+        expect(queryToWrap).toBeValidSparqlQuery();
 
         const q =formatUniversalPaginatorQueryCounter({
             globalRowCountVar,
@@ -125,6 +127,8 @@ describe("formatUniversalPaginatorQueryCounter", () => {
             globalLimit,
             groupLimit,
         });
+
+        expect(q).toBeValidSparqlQuery();
 
         expect(q).toMatch(`?${globalRowCountVar}`);
         expect(q).toMatch(`?${groupedRowCountVar}`);
@@ -153,6 +157,8 @@ SELECT DISTINCT * WHERE{
         OPTIONAL{?Catalog dct:description ?description .  }
 } LIMIT 20`;
 
+        expect(queryToWrap).toBeValidSparqlQuery();
+
         const q = formatUniversalPaginatorQueryCounter({
             globalRowCountVar,
             groupedRowCountVar,
@@ -162,6 +168,6 @@ SELECT DISTINCT * WHERE{
             groupLimit,
         });
 
-        expectPrefixesToNotBeNested(q);
+        expect(q).toBeValidSparqlQuery();
     });
 });

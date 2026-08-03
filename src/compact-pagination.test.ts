@@ -111,6 +111,37 @@ SELECT DISTINCT * WHERE{
     expect(res).toBeValidSparqlQuery();
     expectPrefixesToNotBeNested(res);
   });
+
+  test("query with prefixes #2", () => {
+    const queryToWrap = `PREFIX : <https://dblp.org/rdf/schema#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT DISTINCT * WHERE{
+  ?Publication rdf:type :Publication .
+  OPTIONAL{?Publication rdfs:label ?label .  }
+  OPTIONAL{?Publication :numberOfCreators ?numberOfCreators .  }
+  OPTIONAL{?Publication :title ?title .  }
+  OPTIONAL{?Publication :yearOfPublication ?yearOfPublication .  }
+  OPTIONAL{?Publication :publishedIn ?publishedIn .  }
+  OPTIONAL{?Publication :pagination ?pagination .  }
+  OPTIONAL{?Publication :publishedInJournal ?publishedInJournal .  }
+    }`;
+
+    expect(queryToWrap).toBeValidSparqlQuery();
+
+    const res = formatPaginatedQuery({
+      queryToWrap,
+      groupLimit: 20,
+      groupOffset: 30,
+      globalLimit: 2000,
+      idVars: ["Publication"],
+      propNameVar,
+      propValVar,
+    });
+
+    expect(res).toBeValidSparqlQuery();
+    expectPrefixesToNotBeNested(res);
+  });
 });
 
 

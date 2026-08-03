@@ -115,16 +115,31 @@ export function findVars({
 export function splitQueryPreamble(
   query: string,
 ): { preamble: string, main: string } {
-  const lineIsPrefixStatement = (line: string) => !!line.match(/\s*PREFIX/);
-  const lineIsBlank = (line: string) => !!line.match(/^\s*$/);
+  const parser = new Parser({
+    defaultContext: { astFactory: new AstFactory() },
+    lexerConfig: { positionTracking: 'full' },
+  });
 
-  const lines = query.split("\n");
-  const boundaryIndex = lines
-    .findIndex((line) => !(lineIsPrefixStatement(line) || lineIsBlank(line)));
+  const ast = parser.parse(query);
+
+  if (ast.type !== "query") throw "Unexpected ast type!";
+
+  const maybeLoc = ast.context.at(-1)?.loc;
+
+  let splitIndex: number;
+
+  if (maybeLoc) {
+    // NOTE: With full position tracking it should be impossible to have other type selected.
+    if (maybeLoc.sourceLocationType !== "source") throw "Unexpected!";
+    splitIndex = maybeLoc.end;
+  } else {
+    // NOTE: No context means no preamble and we split at the beginning.
+    splitIndex = 0;
+  }
 
   return {
-    preamble: lines.slice(0, boundaryIndex).join("\n"),
-    main: lines.slice(boundaryIndex).join("\n"),
+    preamble: query.slice(0, splitIndex),
+    main: query.slice(splitIndex),
   };
 }
 
