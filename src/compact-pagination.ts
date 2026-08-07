@@ -31,15 +31,14 @@ function formatValueSelection({
       fmtSubquery(main),
       `BIND("${valVarName}" AS ?${propNameVar})`,
       `BIND(?${valVarName} as ?${propValVar})`,
+      // NOTE: Filtering within BIND clause seems to be more performant than adding a constraint
+      // outside the unionized query.
+      `FILTER(BOUND(?${propValVar}))`,
     ].join("\n"));
   }
 
-  // NOTE: Returning list to avoid subqueries.
-  // NOTE: Avoiding subqueries because subqueries are unordered and we have to duplicate ORDER BY
-  // if we wish to preserve order.
   return [
     valueVars.map((valueVar) => formatUnionClause(valueVar)).join(" UNION "),
-    `FILTER(BOUND(?${propValVar}))`,
   ];
 }
 
@@ -179,7 +178,7 @@ export function formatPaginatedCounterQuery({
   // subqueries. Thus a less elegant solution without `COUNT(DISTINCT *)` is used.
   // NOTE: COUNT(DISTINCT *) issue can be seen in https://github.com/ad-freiburg/qlever/issues/3158
 
-  const globalRows = [
+  const compactRowSelection = [
     // NOTE: `valueConstraints` is projecting old variables and thus we need to be explicit about
     // the variables we are selecting for correct counting.
     `SELECT DISTINCT ${fmtVars([...idVars, propNameVar, propValVar])} WHERE {`,
@@ -187,33 +186,31 @@ export function formatPaginatedCounterQuery({
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
-  const groupedRows = [
-    `SELECT DISTINCT ${fmtVars(idVars)} WHERE {`,
-    ...valueConstraints,
-    `} LIMIT ${globalLimit}`,
+  const perKeyCountVar = `__perKeyCount`;
+
+  const formatSelectBind = (valueExpression: string, varName: string) => {
+    return `(${valueExpression} AS ?${varName})`;
+  }
+
+  const keyToCountSelection = [
+    `SELECT ${fmtVars(idVars)} (COUNT(*) AS ?${perKeyCountVar}) WHERE {`,
+    compactRowSelection,
+    `} GROUP BY ${fmtVars(idVars)}`
   ].join("\n");
 
-  const countGlobalRows = [
-    `SELECT (COUNT(*) AS ?${globalRowCountVar}) {`,
-    globalRows,
-    "}",
-  ].join("\n");
+  const finalSelections = [
+    formatSelectBind(`SUM(?${perKeyCountVar})`, globalRowCountVar),
+    formatSelectBind(`COUNT(?${perKeyCountVar})`, groupedRowCountVar),
+  ].join(" ");
 
-  const countGroupedRows = [
-    `SELECT (COUNT(*) AS ?${groupedRowCountVar}) {`,
-    groupedRows,
-    "}",
-  ].join("\n");
-
-  const query = [
+  const finalQuery = [
     preamble,
-    "SELECT * WHERE {",
-    fmtSubquery(countGlobalRows),
-    fmtSubquery(countGroupedRows),
-    "}",
+    `SELECT ${finalSelections} WHERE {`,
+    keyToCountSelection,
+    `}`,
   ].join("\n");
 
-  return query;
+  return finalQuery;
 }
 
 export function tableToMulticardinalRow({
