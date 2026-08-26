@@ -170,21 +170,11 @@ PREFIX : <https://id.kb.se/marc/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 SELECT * WHERE {
   ?this rdf:type kbv:Note .
-  OPTIONAL {
-    ?this kbv:label ?label .
-  }
-  OPTIONAL {
-    ?this :fieldref ?fieldref .
-  }
-  OPTIONAL {
-    ?this :headingOrSubdivisionTerm ?headingOrSubdivisionTerm .
-  }
-  OPTIONAL {
-    ?this kbv:scopeNote ?scopeNote .
-  }
-  OPTIONAL {
-    ?this kbv:hasNote ?hasNote .
-  }
+  OPTIONAL { ?this kbv:label ?label . }
+  OPTIONAL { ?this :fieldref ?fieldref . }
+  OPTIONAL { ?this :headingOrSubdivisionTerm ?headingOrSubdivisionTerm . }
+  OPTIONAL { ?this kbv:scopeNote ?scopeNote . }
+  OPTIONAL { ?this kbv:hasNote ?hasNote . }
   FILTER ( ( ?label != "H3299A" ) )
 }
 LIMIT 100`;

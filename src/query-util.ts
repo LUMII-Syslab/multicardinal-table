@@ -154,6 +154,19 @@ export function isQueryValid(query: string) {
 }
 
 /**
+ * Find all optional patterns and ensure they are in the same line.
+ **/
+export function flattenOptionalPatterns(query: string): string {
+  const res = query.replace(
+    /OPTIONAL\s*\{\s*(.*)\s*\}/g,
+    (_, pattern: string) =>
+      `OPTIONAL { ${pattern.replace(/\s+/g, ' ').trim()} }`,
+  );
+
+  return res;
+}
+
+/**
  * Move optional patterns below basic graph patterns.
  *
  * This is needed because some SPARQL engines (e.g. Virtuoso) return 500 when optional attributes
@@ -192,5 +205,7 @@ export function reorderOptional(query: string): string {
     },
   });
 
-  return generator.generate(newAst)
+  const newQuery = generator.generate(newAst);
+
+  return flattenOptionalPatterns(newQuery);
 }
