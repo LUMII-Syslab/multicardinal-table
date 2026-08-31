@@ -209,8 +209,8 @@ describe("formatQuery", () => {
 
         const expectedVarInfos: VarInfo[] = [
             { varName: "this", path: [] },
-            { varName: "core⁻prefLabel", path: ["http://www.w3.org/2004/02/skos/core#prefLabel"] },
-            { varName: "skos�xl⁻prefLabel", path: ["http://www.w3.org/2008/05/skos-xl#prefLabel"] },
+            { varName: "core_prefLabel", path: ["http://www.w3.org/2004/02/skos/core#prefLabel"] },
+            { varName: "skos_xl_prefLabel", path: ["http://www.w3.org/2008/05/skos-xl#prefLabel"] },
         ];
 
         const { query, varInfos } = formatQuery(sampleSelection);
@@ -238,8 +238,8 @@ describe("formatQuery", () => {
 
         const expectedVarInfos: VarInfo[] = [
             { varName: "this", path: [] },
-            { varName: "core⁻prefLabel", path: ["http://www.w3.org/2004/02/skos/core#prefLabel"] },
-            { varName: "skos�xl⁻prefLabel", path: ["http://www.w3.org/2008/05/skos-xl#prefLabel"] },
+            { varName: "core_prefLabel", path: ["http://www.w3.org/2004/02/skos/core#prefLabel"] },
+            { varName: "skos_xl_prefLabel", path: ["http://www.w3.org/2008/05/skos-xl#prefLabel"] },
             { varName: "prefLabel123", path: ["http://www.w3.org/2004/02/skos/core#prefLabel123"] },
         ];
 

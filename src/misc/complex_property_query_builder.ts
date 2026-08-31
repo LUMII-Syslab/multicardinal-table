@@ -34,8 +34,8 @@ export const sparqlVarRe: RegExp = (() => {
 })();
 
 const pathSeparatorChar = "__";
-const pathItemSegmentSeparatorChar = "⁻";
-const placeholderChar = "�";
+const pathItemSegmentSeparatorChar = "_";
+const placeholderChar = "_";
 
 function isCharLegalForVarName(ch: string) {
   const i = ch.codePointAt(0);
