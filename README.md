@@ -1,4 +1,14 @@
-# RDF Toolbag
+# Multicardinal table
+
+![Multicardinal table displaying data from Academy Sampo dataset](./readme-assets/multicardinal-table.png)
+
+Multicardinal table displaying data from Academy Sampo dataset.
+
+## Introduction
+
+This repository provides multicardinal table component -- table that can have cells with multiple values. Given a base query and function to perform sparql queries, multicardinal table will provide a paginated view with count information.   
+
+Additionally, this repository exports a complex property selector that provides a UI that accepts RDF types and properties which are then converted into SPARQL query that can be paginated. The table does not require this selector but it can serve as a starting point for more user-friendly SPARQL query interfaces that do not require extensive knowledge of SPARQL syntax.
 
 ## Dev Notes
 
