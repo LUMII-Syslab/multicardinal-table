@@ -12,36 +12,35 @@ const lineAwareIndent = (src: string) => src.split("\n").map(indent).join("\n");
 const fmtVars = (vars: string[]) => vars.map((it) => `?${it}`).join(" ");
 const fmtSubquery = (subquery: string) => lineAwareIndent(["{", subquery, "}"].join("\n"));
 
-function formatValueSelection({
-  queryToWrap: query,
+/**
+ * Get lines of queries needed for proper propName and propVal usage.
+ */
+function formatPropConstraints({
+  query,
+  idVars,
   propNameVar,
   propValVar,
-  idVars,
 }: {
-  queryToWrap: string,
+  query: string,
+  idVars: string[],
   propNameVar: string,
   propValVar: string,
-  idVars: string[],
 }): string[] {
-  const { main } = splitQueryPreamble(query);
   const valueVars: string[] = findVars({ query }).filter((it) => !idVars.includes(it));
 
-  function formatUnionClause(valVarName: string) {
-    return fmtSubquery([
-      fmtSubquery(main),
-      `BIND("${valVarName}" AS ?${propNameVar})`,
-      `BIND(?${valVarName} as ?${propValVar})`,
-      // NOTE: Filtering within BIND clause seems to be more performant than adding a constraint
-      // outside the unionized query.
-      `FILTER(BOUND(?${propValVar}))`,
-    ].join("\n"));
-  }
+  // NOTE: N/A value shouldn't ever appear but we have to put some value
+  const makeIfExpr = ([thisVar, ...rest]: string[]): string => thisVar
+    ? `IF(?${propNameVar} = "${thisVar}", ?${thisVar}, ${makeIfExpr(rest)})`
+    : '"N/A"';
 
   return [
-    valueVars.map((valueVar) => formatUnionClause(valueVar)).join(" UNION "),
+    `VALUES ?${propNameVar} { ${valueVars.map((it) => `"${it}"`).join(" ")} }`,
+    `BIND(${makeIfExpr(valueVars)} AS ?${propValVar})`,
+    // NOTE: `valueVars` may contain vars that will never appear in results and we need to filter
+    // those rows out to reduce noise.
+    `FILTER ( BOUND(?${propValVar}) )`,
   ];
 }
-
 
 function getOrderModifier(query: string): SolutionModifierOrder | undefined {
   const parser = new Parser();
@@ -100,24 +99,10 @@ export function formatPaginatedQuery({
 }): string {
   const { preamble, main } = splitQueryPreamble(query);
 
-  // NOTE: Candidates are key column value sets that are retrieved during pagination.
-  const varToCandidateVarName = (varName: string) => `__candidate_${varName}`;
-
   const selectedVars = [...idVars, propNameVar, propValVar];
 
-  // NOTE: Checking for equality is not enough -- BOUND() checks are required to allow unbound
-  // variables to be used as keys.
-  const candidateFilters = idVars.map((k) => {
-    const newK = varToCandidateVarName(k);
-    return `FILTER( (?${k} = ?${newK}) || (!BOUND(?${k}) && !BOUND(?${newK})))`;
-  });
-
   function getKeyConstraintSubquery() {
-    const selection = idVars
-      .map((it) => `(?${it} AS ?${varToCandidateVarName(it)})`)
-      .join(" ");
-
-    const initialConstraint = `SELECT DISTINCT ${selection}
+    const initialConstraint = `SELECT DISTINCT ${fmtVars(idVars)}
 WHERE {
 ${lineAwareIndent(main)}
 }
@@ -138,8 +123,8 @@ OFFSET ${groupOffset}`;
     preamble,
     `SELECT DISTINCT ${fmtVars(selectedVars)} {`,
     fmtSubquery(getKeyConstraintSubquery()),
-    ...formatValueSelection({ idVars, propNameVar, propValVar, queryToWrap: query }),
-    ...candidateFilters,
+    fmtSubquery(main),
+    ...formatPropConstraints({ idVars, propNameVar, propValVar, query }),
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
@@ -166,10 +151,10 @@ export function formatPaginatedCounterQuery({
   globalRowCountVar: string,
   groupedRowCountVar: string,
 }) {
-  const { preamble } = splitQueryPreamble(queryToWrap);
+  const { preamble, main } = splitQueryPreamble(queryToWrap);
 
-  const valueConstraints = formatValueSelection({
-    idVars, propNameVar, propValVar, queryToWrap,
+  const propConstraints = formatPropConstraints({
+    idVars, propNameVar, propValVar, query: queryToWrap,
   });
 
   // NOTE: Initially there used to be a more elegant solution -- first select rows and then only
@@ -182,7 +167,8 @@ export function formatPaginatedCounterQuery({
     // NOTE: `valueConstraints` is projecting old variables and thus we need to be explicit about
     // the variables we are selecting for correct counting.
     `SELECT DISTINCT ${fmtVars([...idVars, propNameVar, propValVar])} WHERE {`,
-    ...valueConstraints,
+    fmtSubquery(main),
+    ...propConstraints,
     `} LIMIT ${globalLimit}`,
   ].join("\n");
 
