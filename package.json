@@ -1,8 +1,8 @@
 {
-  "name": "rdf-toolbag",
-  "version": "0.3.5",
+  "name": "multicardinal-table",
+  "version": "0.3.6",
   "type": "module",
-  "main": "./dist/rdf-toolbag.js",
+  "main": "./dist/multicardinal-table.js",
   "files": [
     "dist"
   ],

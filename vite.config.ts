@@ -4,7 +4,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import dts from 'vite-plugin-dts';
-import { peerDependencies } from "./package.json";
+import {
+  peerDependencies,
+  name as packageName,
+} from "./package.json";
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
@@ -29,8 +32,8 @@ export default defineConfig({
     build: {
       lib: {
         entry: path.resolve(__dirname, "./src/lib_index.ts"),
-        name: "rdf-toolbag",
-        fileName: "rdf-toolbag"
+        name: packageName,
+        fileName: packageName,
       },
       rollupOptions: {
         external: [...Object.keys(peerDependencies)]
