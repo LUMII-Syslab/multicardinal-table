@@ -30,4 +30,5 @@ export {
 } from "@/misc/complex_property_query_builder";
 export {
     rewriteQueryWithPrefixes,
+    reorderOptional,
 } from "@/query-util";
